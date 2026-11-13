@@ -1,0 +1,535 @@
+<!doctype html><html><head><meta charset=utf8><meta name=viewport content="width=device-width,initial-scale=1,viewport-fit=cover"><style>:root{color-scheme:light;box-sizing:border-box;padding-top:env(safe-area-inset-top,0px);padding-bottom:env(safe-area-inset-bottom,0px)}html{scroll-padding-top:env(safe-area-inset-top,0px)}body{margin:0;padding:0;font:14px -apple-system,BlinkMacSystemFont,sans-serif;background:#fff;color:#000}img{max-width:100%}[hidden]:not([hidden=until-found i]){display:none!important}</style></head><body>
+<title>Eigenvalue Explorer</title>
+<meta name="claude:viewport-fit-sides" content="cover">
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600&family=Space+Grotesk:wght@500;600;700&display=swap">
+<style>
+/* Layout: a working plane on the left, matrix controls and the solved eigen-data stacked on the right, derivation underneath. */
+:root{
+  --bg:#f4f6f9; --surface:#ffffff; --ink:#14202e; --muted:#586678; --line:#dde3ea;
+  --grid:#e8ecf1; --axis:#b9c3cf;
+  --vcol:#2456d4; --avcol:#d6521b; --eig:#0c8a68;
+  --soft:#eef2f7; --focus:#2456d4;
+  --font-head:"Space Grotesk","Inter",system-ui,sans-serif;
+  --font-body:"Inter",system-ui,-apple-system,"Segoe UI",sans-serif;
+}
+@media (prefers-color-scheme: dark){
+  :root:not([data-theme="light"]){
+    --bg:#0e141b; --surface:#16202a; --ink:#e6edf5; --muted:#92a1b3; --line:#283543;
+    --grid:#212d3a; --axis:#3c4b5c;
+    --vcol:#78a0ff; --avcol:#ff8c5c; --eig:#3fd3a3;
+    --soft:#1c2834; --focus:#78a0ff; color-scheme:dark;
+  }
+}
+:root[data-theme="dark"]{
+  --bg:#0e141b; --surface:#16202a; --ink:#e6edf5; --muted:#92a1b3; --line:#283543;
+  --grid:#212d3a; --axis:#3c4b5c;
+  --vcol:#78a0ff; --avcol:#ff8c5c; --eig:#3fd3a3;
+  --soft:#1c2834; --focus:#78a0ff; color-scheme:dark;
+}
+*{box-sizing:border-box}
+body{background:var(--bg);color:var(--ink);font-family:var(--font-body);font-size:15px;line-height:1.55;
+  padding-block:28px 48px;padding-left:max(16px,env(safe-area-inset-left,0px));padding-right:max(16px,env(safe-area-inset-right,0px))}
+.wrap{max-width:1180px;margin:0 auto;display:flex;flex-direction:column;gap:22px}
+h1,h2,h3{font-family:var(--font-head);margin:0;text-wrap:balance;letter-spacing:-0.01em}
+h1{font-size:clamp(1.7rem,4.2vw,2.35rem);line-height:1.15}
+h2{font-size:1.1rem}
+h3{font-size:.78rem;text-transform:uppercase;letter-spacing:.08em;color:var(--muted);font-weight:600;font-family:var(--font-body)}
+p{margin:0}
+.lede{color:var(--muted);max-width:68ch;margin-top:8px}
+.eq{font-family:var(--font-head);font-weight:600}
+.grid{display:grid;gap:18px;grid-template-columns:minmax(0,1.08fr) minmax(0,.92fr);align-items:start}
+@media (max-width:900px){.grid{grid-template-columns:minmax(0,1fr)}}
+.panel{background:var(--surface);border:1px solid var(--line);border-radius:12px;padding:16px;display:flex;flex-direction:column;gap:14px;min-width:0}
+.stack{display:flex;flex-direction:column;gap:18px;min-width:0}
+
+/* plane */
+.plane{width:100%;aspect-ratio:1;display:block;border:1px solid var(--line);border-radius:8px;background:var(--surface);touch-action:none;cursor:crosshair;max-width:100%}
+.legend{display:flex;flex-wrap:wrap;gap:6px 16px;font-size:.82rem;color:var(--muted)}
+.legend span{display:inline-flex;align-items:center;gap:7px}
+.sw{width:18px;height:0;border-top:3px solid var(--vcol);display:inline-block}
+.sw.av{border-color:var(--avcol)}
+.sw.eig{border-top:3px dashed var(--eig)}
+.sw.img{border-top:2px solid var(--vcol);opacity:.6}
+.controls{display:grid;gap:12px;grid-template-columns:repeat(2,minmax(0,1fr))}
+@media (max-width:560px){.controls{grid-template-columns:minmax(0,1fr)}}
+.ctl{display:flex;flex-direction:column;gap:4px;min-width:0}
+.ctl label,.lab{font-size:.82rem;color:var(--muted);display:flex;justify-content:space-between;gap:8px}
+.ctl output,.lab output{font-variant-numeric:tabular-nums;color:var(--ink);font-weight:600}
+input[type=range]{width:100%;accent-color:var(--vcol);margin:0;height:24px}
+button{font:inherit;font-size:.88rem;font-weight:500;color:var(--ink);background:var(--soft);border:1px solid var(--line);border-radius:8px;padding:7px 12px;cursor:pointer}
+button:hover{border-color:var(--axis)}
+button[aria-pressed="true"]{background:var(--vcol);border-color:var(--vcol);color:var(--surface)}
+:focus-visible{outline:2px solid var(--focus);outline-offset:2px}
+.row{display:flex;flex-wrap:wrap;gap:8px;align-items:center}
+
+/* matrix */
+.matrix{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:12px 18px;position:relative;padding:10px 20px;border-left:3px solid var(--ink);border-right:3px solid var(--ink);border-radius:6px}
+.mcell{display:flex;flex-direction:column;gap:2px;min-width:0}
+.mcell .lab{font-family:var(--font-head)}
+.presets{display:flex;flex-wrap:wrap;gap:6px}
+.presets button{padding:5px 10px;font-size:.82rem}
+
+/* readouts */
+.kv{display:grid;grid-template-columns:auto minmax(0,1fr);gap:6px 14px;font-size:.92rem;margin:0}
+.kv dt{color:var(--muted)}
+.kv dd{margin:0;font-variant-numeric:tabular-nums;overflow-wrap:anywhere}
+.pill{display:inline-flex;align-items:center;gap:8px;border-radius:999px;padding:5px 12px;font-size:.86rem;font-weight:600;border:1px solid var(--line);background:var(--soft);color:var(--muted);width:fit-content;max-width:100%}
+.pill.on{background:color-mix(in srgb,var(--eig) 16%,var(--surface));border-color:var(--eig);color:var(--ink)}
+.pill i{width:9px;height:9px;border-radius:50%;background:var(--axis);display:inline-block;flex:none}
+.pill.on i{background:var(--eig)}
+.result{display:grid;gap:10px}
+.eigcard{border:1px solid var(--line);border-radius:10px;padding:10px 12px;display:grid;gap:2px;background:var(--soft)}
+.eigcard b{font-family:var(--font-head);font-size:1.05rem}
+.eigcard span{color:var(--muted);font-size:.88rem;font-variant-numeric:tabular-nums}
+.note{font-size:.9rem;color:var(--muted)}
+canvas.chart{width:100%;height:150px;display:block;border:1px solid var(--line);border-radius:8px;background:var(--surface)}
+
+/* derivation */
+ol.steps{margin:0;padding:0;list-style:none;display:grid;gap:12px;counter-reset:s}
+ol.steps li{counter-increment:s;display:grid;grid-template-columns:30px minmax(0,1fr);gap:12px;align-items:start}
+ol.steps li::before{content:counter(s);width:26px;height:26px;border-radius:50%;background:var(--soft);border:1px solid var(--line);display:grid;place-items:center;font-size:.8rem;font-weight:600;font-family:var(--font-head)}
+ol.steps .body{min-width:0;overflow-x:auto}
+.math{font-family:var(--font-head);font-size:1.02rem;margin-top:3px;white-space:nowrap}
+.sub{font-size:.8em;vertical-align:-.25em}
+sup{font-size:.7em}
+@media (prefers-reduced-motion:reduce){*{scroll-behavior:auto!important}}
+</style>
+
+<div class="wrap">
+  <header>
+    <h1>Eigenvalue Explorer</h1>
+    <p class="lede">A matrix <span class="eq">A</span> moves every vector in the plane. Most vectors change direction. An eigenvector is one that does not: <span class="eq">Av</span> lands on the same line as <span class="eq">v</span>, stretched by the eigenvalue <span class="eq">λ</span>.</p>
+  </header>
+
+  <div class="grid">
+    <section class="panel" aria-labelledby="plane-h">
+      <h3 id="plane-h">The plane</h3>
+      <canvas id="plane" class="plane" role="img" aria-label="Plane showing a unit vector v, its image Av, the transformed grid and the eigen-directions of the matrix"></canvas>
+      <div class="legend" aria-hidden="true">
+        <span><i class="sw"></i>v (unit vector)</span>
+        <span><i class="sw av"></i>Av</span>
+        <span><i class="sw eig"></i>eigen-direction</span>
+        <span><i class="sw img"></i>image of the unit circle</span>
+      </div>
+      <div class="controls">
+        <div class="ctl">
+          <label for="sth">Direction of v <output id="oth">20°</output></label>
+          <input id="sth" type="range" min="0" max="359" step="1" value="20">
+        </div>
+        <div class="ctl">
+          <label for="smo">Apply A to the grid <output id="omo">100%</output></label>
+          <input id="smo" type="range" min="0" max="100" step="1" value="100">
+        </div>
+      </div>
+      <div class="row">
+        <button id="sweep" type="button" aria-pressed="false">Sweep direction</button>
+        <span class="note">Or drag on the plane to point v anywhere.</span>
+      </div>
+      <p id="hint" class="note"></p>
+    </section>
+
+    <div class="stack">
+      <section class="panel" aria-labelledby="mat-h">
+        <h3 id="mat-h">Matrix A</h3>
+        <div class="matrix">
+          <div class="mcell"><label class="lab" for="sa">a <output id="oa"></output></label><input id="sa" type="range" min="-3" max="3" step="0.01" value="2"></div>
+          <div class="mcell"><label class="lab" for="sb">b <output id="ob"></output></label><input id="sb" type="range" min="-3" max="3" step="0.01" value="1"></div>
+          <div class="mcell"><label class="lab" for="sc">c <output id="oc"></output></label><input id="sc" type="range" min="-3" max="3" step="0.01" value="1"></div>
+          <div class="mcell"><label class="lab" for="sd">d <output id="od"></output></label><input id="sd" type="range" min="-3" max="3" step="0.01" value="2"></div>
+        </div>
+        <div>
+          <div class="lab" style="margin-bottom:6px">Examples</div>
+          <div class="presets" id="presets"></div>
+        </div>
+      </section>
+
+      <section class="panel" aria-labelledby="live-h">
+        <h3 id="live-h">At this direction</h3>
+        <dl class="kv">
+          <dt>v</dt><dd id="rv"></dd>
+          <dt>Av</dt><dd id="rav"></dd>
+          <dt>|Av|</dt><dd id="rlen"></dd>
+          <dt>sin of angle between v and Av</dt><dd id="rsin"></dd>
+        </dl>
+        <div id="rstatus" class="pill"><i></i><span></span></div>
+      </section>
+
+      <section class="panel" aria-labelledby="res-h">
+        <h3 id="res-h">Eigenvalues and eigenvectors of A</h3>
+        <div id="result" class="result"></div>
+      </section>
+    </div>
+  </div>
+
+  <section class="panel" aria-labelledby="chart-h">
+    <h3 id="chart-h">Alignment as v turns through 360°</h3>
+    <canvas id="chart" class="chart" role="img" aria-label="Graph of the sine of the angle between v and Av against the direction of v"></canvas>
+    <p class="note">The curve is the sine of the angle between v and Av. Wherever it crosses zero, Av lies along v. Those crossings are the eigen-directions, and each direction appears twice because −v is an eigenvector too.</p>
+  </section>
+
+  <section class="panel" aria-labelledby="der-h">
+    <h2 id="der-h">How the eigenvalues are found, with your matrix</h2>
+    <ol class="steps" id="steps"></ol>
+  </section>
+</div>
+
+<script>
+(function(){
+  var $ = function(id){ return document.getElementById(id); };
+  var TAU = Math.PI * 2;
+  var st = { a:2, b:1, c:1, d:2, th:20*Math.PI/180, t:1, sweep:false };
+
+  var PRESETS = [
+    { n:'Stretch', m:[2,0,0,0.5] },
+    { n:'Symmetric', m:[2,1,1,2] },
+    { n:'Shear', m:[1,1,0,1] },
+    { n:'Rotation 60°', m:[0.5,-0.87,0.87,0.5] },
+    { n:'Spiral', m:[1,-1,1,1] },
+    { n:'Reflection', m:[0,1,1,0] },
+    { n:'Singular', m:[1,2,2,4] },
+    { n:'Scalar', m:[1.5,0,0,1.5] }
+  ];
+
+  function fmt(x){
+    if (Math.abs(x) < 5e-4) return '0';
+    var s = (Math.round(x*1000)/1000).toString();
+    return s.replace('-', '−');
+  }
+  function pair(x,y){ return '(' + fmt(x) + ', ' + fmt(y) + ')'; }
+
+  /* ---------- maths ---------- */
+  function vecFor(a,b,c,d,l){
+    var p = [b, l-a], q = [l-d, c];
+    var n1 = Math.hypot(p[0],p[1]), n2 = Math.hypot(q[0],q[1]);
+    var u = n1 >= n2 ? p : q, n = Math.max(n1,n2);
+    if (n < 1e-9){ u = Math.abs(l-a) < 1e-9 ? [1,0] : [0,1]; n = 1; }
+    u = [u[0]/n, u[1]/n];
+    if (u[0] < -1e-12 || (Math.abs(u[0]) < 1e-12 && u[1] < 0)) u = [-u[0], -u[1]];
+    return u;
+  }
+  function eigen(a,b,c,d){
+    var tr = a+d, det = a*d-b*c, disc = tr*tr-4*det, eps = 1e-9;
+    var scalar = Math.abs(b)<eps && Math.abs(c)<eps && Math.abs(a-d)<eps;
+    var out = { tr:tr, det:det, disc:disc };
+    if (disc > eps){
+      var r = Math.sqrt(disc), l1 = (tr+r)/2, l2 = (tr-r)/2;
+      out.kind = 'real'; out.vals = [l1,l2];
+      out.vecs = [vecFor(a,b,c,d,l1), vecFor(a,b,c,d,l2)];
+    } else if (Math.abs(disc) <= eps){
+      var l = tr/2;
+      out.vals = [l,l];
+      if (scalar){ out.kind = 'scalar'; out.vecs = [[1,0],[0,1]]; }
+      else { out.kind = 'defective'; out.vecs = [vecFor(a,b,c,d,l)]; }
+    } else {
+      out.kind = 'complex'; out.re = tr/2; out.im = Math.sqrt(-disc)/2; out.vals = []; out.vecs = [];
+    }
+    return out;
+  }
+  function Av(x,y){ return [st.a*x + st.b*y, st.c*x + st.d*y]; }
+
+  /* ---------- canvas helpers ---------- */
+  function colors(){
+    var cs = getComputedStyle(document.documentElement);
+    function g(n){ return cs.getPropertyValue(n).trim(); }
+    return { surface:g('--surface'), grid:g('--grid'), axis:g('--axis'), ink:g('--ink'), muted:g('--muted'), v:g('--vcol'), av:g('--avcol'), eig:g('--eig') };
+  }
+  function fit(cv){
+    var dpr = window.devicePixelRatio || 1;
+    var w = cv.clientWidth, h = cv.clientHeight;
+    if (cv.width !== Math.round(w*dpr) || cv.height !== Math.round(h*dpr)){
+      cv.width = Math.round(w*dpr); cv.height = Math.round(h*dpr);
+    }
+    var ctx = cv.getContext('2d');
+    ctx.setTransform(dpr,0,0,dpr,0,0);
+    return { ctx:ctx, w:w, h:h };
+  }
+  function arrow(ctx,x0,y0,x1,y1,col,w){
+    var len = Math.hypot(x1-x0,y1-y0);
+    ctx.strokeStyle = col; ctx.fillStyle = col; ctx.lineWidth = w; ctx.setLineDash([]);
+    ctx.beginPath(); ctx.moveTo(x0,y0); ctx.lineTo(x1,y1); ctx.stroke();
+    if (len < 4) return;
+    var ang = Math.atan2(y1-y0,x1-x0), hl = 11 + w;
+    ctx.beginPath(); ctx.moveTo(x1,y1);
+    ctx.lineTo(x1-hl*Math.cos(ang-0.38), y1-hl*Math.sin(ang-0.38));
+    ctx.lineTo(x1-hl*Math.cos(ang+0.38), y1-hl*Math.sin(ang+0.38));
+    ctx.closePath(); ctx.fill();
+  }
+  function label(ctx,text,x,y,col,w,h){
+    ctx.font = '600 13px Inter, system-ui, sans-serif';
+    var tw = ctx.measureText(text).width;
+    x = Math.max(4, Math.min(w - tw - 4, x));
+    y = Math.max(16, Math.min(h - 6, y));
+    ctx.fillStyle = col; ctx.fillText(text, x, y);
+  }
+
+  /* ---------- main plane ---------- */
+  function drawPlane(){
+    var cv = $('plane'), f = fit(cv), ctx = f.ctx, W = f.w, H = f.h, C = colors();
+    var a = st.a, b = st.b, c = st.c, d = st.d, t = st.t;
+    var S = a*a+b*b+c*c+d*d, D = a*d-b*c;
+    var sig = Math.sqrt((S + Math.sqrt(Math.max(0,S*S-4*D*D)))/2);
+    var R = Math.max(2.6, sig*1.18);
+    var s = W/(2*R);
+    function P(x,y){ return [W/2 + x*s, H/2 - y*s]; }
+    var m11 = 1+t*(a-1), m12 = t*b, m21 = t*c, m22 = 1+t*(d-1);
+    function M(x,y){ return [m11*x + m12*y, m21*x + m22*y]; }
+
+    ctx.fillStyle = C.surface; ctx.fillRect(0,0,W,H);
+    var step = R > 7 ? 2 : 1, K = Math.ceil(R);
+    var k, p, q;
+    ctx.setLineDash([]);
+    for (k = -K; k <= K; k += step){
+      ctx.strokeStyle = k === 0 ? C.axis : C.grid; ctx.lineWidth = k === 0 ? 1.5 : 1;
+      p = P(k,-R); q = P(k,R); ctx.beginPath(); ctx.moveTo(p[0],p[1]); ctx.lineTo(q[0],q[1]); ctx.stroke();
+      p = P(-R,k); q = P(R,k); ctx.beginPath(); ctx.moveTo(p[0],p[1]); ctx.lineTo(q[0],q[1]); ctx.stroke();
+    }
+    if (t > 0.002){
+      var KK = Math.ceil(R)*3;
+      ctx.strokeStyle = C.v; ctx.globalAlpha = 0.28; ctx.lineWidth = 1;
+      for (k = -KK; k <= KK; k++){
+        var a1 = M(k,-KK), a2 = M(k,KK), b1 = M(-KK,k), b2 = M(KK,k);
+        p = P(a1[0],a1[1]); q = P(a2[0],a2[1]); ctx.beginPath(); ctx.moveTo(p[0],p[1]); ctx.lineTo(q[0],q[1]); ctx.stroke();
+        p = P(b1[0],b1[1]); q = P(b2[0],b2[1]); ctx.beginPath(); ctx.moveTo(p[0],p[1]); ctx.lineTo(q[0],q[1]); ctx.stroke();
+      }
+      ctx.globalAlpha = 1;
+    }
+    /* unit circle and its image */
+    ctx.setLineDash([4,4]); ctx.strokeStyle = C.muted; ctx.lineWidth = 1;
+    ctx.beginPath(); ctx.arc(W/2,H/2,s,0,TAU); ctx.stroke(); ctx.setLineDash([]);
+    ctx.strokeStyle = C.v; ctx.globalAlpha = 0.7; ctx.lineWidth = 2; ctx.beginPath();
+    for (var i = 0; i <= 180; i++){
+      var ph = i/180*TAU, im = M(Math.cos(ph),Math.sin(ph)); p = P(im[0],im[1]);
+      if (i === 0) ctx.moveTo(p[0],p[1]); else ctx.lineTo(p[0],p[1]);
+    }
+    ctx.stroke(); ctx.globalAlpha = 1;
+
+    /* eigen-directions */
+    var E = eigen(a,b,c,d);
+    if (E.kind !== 'complex' && E.kind !== 'scalar'){
+      for (var j = 0; j < E.vecs.length; j++){
+        var u = E.vecs[j], L = R*2.2;
+        var e1 = P(-u[0]*L,-u[1]*L), e2 = P(u[0]*L,u[1]*L);
+        ctx.setLineDash([7,5]); ctx.strokeStyle = C.eig; ctx.lineWidth = 1.8;
+        ctx.beginPath(); ctx.moveTo(e1[0],e1[1]); ctx.lineTo(e2[0],e2[1]); ctx.stroke(); ctx.setLineDash([]);
+        var lp = P(u[0]*R*0.78, u[1]*R*0.78);
+        var nm = E.vecs.length === 1 ? 'λ = ' + fmt(E.vals[0]) : 'λ' + (j+1) + ' = ' + fmt(E.vals[j]);
+        label(ctx, nm, lp[0]+8, lp[1]-8, C.eig, W, H);
+      }
+    }
+
+    /* v and Av */
+    var vx = Math.cos(st.th), vy = Math.sin(st.th), av = Av(vx,vy);
+    var o = P(0,0), vp = P(vx,vy), ap = P(av[0],av[1]);
+    arrow(ctx,o[0],o[1],ap[0],ap[1],C.av,3);
+    arrow(ctx,o[0],o[1],vp[0],vp[1],C.v,3);
+    var al = Math.hypot(av[0],av[1]), cr = vx*av[1]-vy*av[0], sn = al > 1e-9 ? cr/al : 0;
+    if (al < 1e-6 || Math.abs(sn) < 0.025){
+      ctx.strokeStyle = C.eig; ctx.lineWidth = 2.5;
+      ctx.beginPath(); ctx.arc(vp[0],vp[1],10,0,TAU); ctx.stroke();
+      ctx.beginPath(); ctx.arc(ap[0],ap[1],10,0,TAU); ctx.stroke();
+    }
+    label(ctx,'v',vp[0]+10,vp[1]-8,C.v,W,H);
+    label(ctx,'Av',ap[0]+12,ap[1]+16,C.av,W,H);
+    ctx.fillStyle = C.ink; ctx.beginPath(); ctx.arc(o[0],o[1],3,0,TAU); ctx.fill();
+
+    if (E.kind === 'complex'){
+      ctx.font = '600 13px Inter, system-ui, sans-serif'; ctx.fillStyle = C.muted;
+      ctx.fillText('No real eigen-direction: every vector turns.', 12, 22);
+    } else if (E.kind === 'scalar'){
+      ctx.font = '600 13px Inter, system-ui, sans-serif'; ctx.fillStyle = C.eig;
+      ctx.fillText('Every direction is an eigen-direction.', 12, 22);
+    }
+  }
+
+  /* ---------- alignment chart ---------- */
+  function crossAt(th){
+    var x = Math.cos(th), y = Math.sin(th), q = Av(x,y);
+    var l = Math.hypot(q[0],q[1]);
+    return l > 1e-9 ? (x*q[1]-y*q[0])/l : 0;
+  }
+  function drawChart(){
+    var cv = $('chart'), f = fit(cv), ctx = f.ctx, W = f.w, H = f.h, C = colors();
+    var L = 40, Rr = 14, T = 12, B = 26, pw = W-L-Rr, ph = H-T-B;
+    function X(th){ return L + th/TAU*pw; }
+    function Y(v){ return T + (1-(v+1)/2)*ph; }
+    ctx.fillStyle = C.surface; ctx.fillRect(0,0,W,H);
+    ctx.font = '12px Inter, system-ui, sans-serif'; ctx.textBaseline = 'middle';
+    var yv = [-1,0,1], i;
+    for (i = 0; i < yv.length; i++){
+      ctx.strokeStyle = yv[i] === 0 ? C.axis : C.grid; ctx.lineWidth = yv[i] === 0 ? 1.5 : 1;
+      ctx.beginPath(); ctx.moveTo(L,Y(yv[i])); ctx.lineTo(L+pw,Y(yv[i])); ctx.stroke();
+      ctx.fillStyle = C.muted; ctx.textAlign = 'right'; ctx.fillText(yv[i] > 0 ? '1' : (yv[i] < 0 ? '−1' : '0'), L-8, Y(yv[i]));
+    }
+    ctx.textBaseline = 'alphabetic'; ctx.textAlign = 'center';
+    for (i = 0; i <= 4; i++){
+      var xx = L + i/4*pw;
+      ctx.strokeStyle = C.grid; ctx.lineWidth = 1; ctx.beginPath(); ctx.moveTo(xx,T); ctx.lineTo(xx,T+ph); ctx.stroke();
+      ctx.fillStyle = C.muted; ctx.fillText((i*90) + '°', xx, H-8);
+    }
+    ctx.strokeStyle = C.av; ctx.lineWidth = 2.2; ctx.beginPath();
+    for (i = 0; i <= 360; i++){
+      var th = i/360*TAU, v = crossAt(th);
+      if (i === 0) ctx.moveTo(X(th),Y(v)); else ctx.lineTo(X(th),Y(v));
+    }
+    ctx.stroke();
+    var E = eigen(st.a,st.b,st.c,st.d);
+    if (E.kind === 'real' || E.kind === 'defective'){
+      for (i = 0; i < E.vecs.length; i++){
+        var base = Math.atan2(E.vecs[i][1],E.vecs[i][0]);
+        for (var k = 0; k < 2; k++){
+          var ang = ((base + k*Math.PI) % TAU + TAU) % TAU;
+          ctx.fillStyle = C.eig; ctx.strokeStyle = C.surface; ctx.lineWidth = 2;
+          ctx.beginPath(); ctx.arc(X(ang),Y(0),6,0,TAU); ctx.fill(); ctx.stroke();
+        }
+      }
+    }
+    ctx.strokeStyle = C.v; ctx.lineWidth = 2; ctx.setLineDash([4,3]);
+    ctx.beginPath(); ctx.moveTo(X(st.th),T); ctx.lineTo(X(st.th),T+ph); ctx.stroke(); ctx.setLineDash([]);
+    ctx.fillStyle = C.v; ctx.beginPath(); ctx.arc(X(st.th),Y(crossAt(st.th)),5,0,TAU); ctx.fill();
+  }
+
+  /* ---------- text panels ---------- */
+  function poly(tr,det){
+    return 'λ<sup>2</sup> ' + (tr >= 0 ? '− ' : '+ ') + fmt(Math.abs(tr)) + 'λ ' + (det >= 0 ? '+ ' : '− ') + fmt(Math.abs(det)) + ' = 0';
+  }
+  function renderLive(){
+    var vx = Math.cos(st.th), vy = Math.sin(st.th), q = Av(vx,vy);
+    var al = Math.hypot(q[0],q[1]), sn = al > 1e-9 ? (vx*q[1]-vy*q[0])/al : 0;
+    $('rv').textContent = pair(vx,vy);
+    $('rav').textContent = pair(q[0],q[1]);
+    $('rlen').textContent = fmt(al);
+    $('rsin').textContent = fmt(sn);
+    var pill = $('rstatus'), span = pill.querySelector('span');
+    if (al < 1e-6){ pill.className = 'pill on'; span.textContent = 'Av = 0, so v is an eigenvector with λ = 0'; }
+    else if (Math.abs(sn) < 0.025){
+      var lam = vx*q[0] + vy*q[1];
+      pill.className = 'pill on'; span.textContent = 'Eigenvector: Av ≈ λv with λ ≈ ' + fmt(lam);
+    } else { pill.className = 'pill'; span.textContent = 'Not an eigenvector: v and Av point different ways'; }
+    $('oth').textContent = Math.round(st.th*180/Math.PI)%360 + '°';
+  }
+  function kindNote(E){
+    if (E.kind === 'real') return 'Two real eigen-directions. Along each one, A only stretches or flips by λ. Check: λ₁ + λ₂ = ' + fmt(E.vals[0]+E.vals[1]) + ' is the trace and λ₁λ₂ = ' + fmt(E.vals[0]*E.vals[1]) + ' is the determinant.';
+    if (E.kind === 'defective') return 'A repeated eigenvalue with only one eigen-direction, as in a shear. The grid slides along that line.';
+    if (E.kind === 'scalar') return 'A is a multiple of the identity, so every direction is an eigenvector and every vector is scaled by λ.';
+    return 'Complex eigenvalues. A rotates every vector by about ' + fmt(Math.atan2(E.im,E.re)*180/Math.PI) + '° and scales it by |λ| = ' + fmt(Math.hypot(E.re,E.im)) + ', so no real vector keeps its direction.';
+  }
+  function renderSolution(){
+    var E = eigen(st.a,st.b,st.c,st.d), html = '', i;
+    if (E.kind === 'complex'){
+      html += '<div class="eigcard"><b>λ = ' + fmt(E.re) + ' ± ' + fmt(E.im) + 'i</b><span>A complex pair, with no real eigenvector.</span></div>';
+    } else {
+      var n = E.kind === 'defective' ? 1 : (E.kind === 'scalar' ? 2 : E.vals.length);
+      for (i = 0; i < n; i++){
+        var u = E.vecs[i], ang = Math.atan2(u[1],u[0])*180/Math.PI;
+        html += '<div class="eigcard"><b>λ' + (n > 1 ? '<span class="sub">' + (i+1) + '</span>' : '') + ' = ' + fmt(E.vals[i]) + '</b><span>eigenvector direction ' + pair(u[0],u[1]) + ', at ' + fmt(ang) + '°</span></div>';
+      }
+    }
+    html += '<p class="note">' + kindNote(E) + '</p>';
+    $('result').innerHTML = html;
+
+    var a = st.a, b = st.b, c = st.c, d = st.d, steps = '';
+    steps += '<li><div class="body"><b>Ask for a vector that keeps its direction.</b> We want <span class="eq">Av = λv</span> with <span class="eq">v ≠ 0</span>. Rearranged, that is <span class="eq">(A − λI)v = 0</span>.</div></li>';
+    steps += '<li><div class="body"><b>A non-zero solution needs a zero determinant.</b> If <span class="eq">A − λI</span> were invertible, only <span class="eq">v = 0</span> would work. So <span class="eq">det(A − λI) = 0</span>.<div class="math">det [ ' + fmt(a) + ' − λ &nbsp; ' + fmt(b) + ' ; ' + fmt(c) + ' &nbsp; ' + fmt(d) + ' − λ ] = 0</div></div></li>';
+    steps += '<li><div class="body"><b>Expand it.</b> The result is the characteristic equation, <span class="eq">λ<sup>2</sup> − (trace)λ + det = 0</span>, with trace = ' + fmt(E.tr) + ' and det = ' + fmt(E.det) + '.<div class="math">' + poly(E.tr,E.det) + '</div></div></li>';
+    var s4;
+    if (E.kind === 'complex') s4 = 'The discriminant is ' + fmt(E.disc) + ', which is negative, so the roots are complex: <span class="eq">λ = ' + fmt(E.re) + ' ± ' + fmt(E.im) + 'i</span>.';
+    else if (E.kind === 'real') s4 = 'The discriminant is ' + fmt(E.disc) + ', which is positive. Two real roots: <span class="eq">λ = ' + fmt(E.vals[0]) + '</span> and <span class="eq">λ = ' + fmt(E.vals[1]) + '</span>.';
+    else s4 = 'The discriminant is 0, so there is one repeated root: <span class="eq">λ = ' + fmt(E.vals[0]) + '</span>.';
+    steps += '<li><div class="body"><b>Solve the quadratic.</b> ' + s4 + '</div></li>';
+    var s5;
+    if (E.kind === 'complex') s5 = 'For a complex λ the null space of <span class="eq">A − λI</span> has no real vectors, which matches the plane: no direction stays fixed.';
+    else {
+      var parts = [];
+      var cnt = E.kind === 'real' ? 2 : (E.kind === 'scalar' ? 1 : 1);
+      for (i = 0; i < cnt; i++){
+        var u2 = E.vecs[i];
+        parts.push('λ = ' + fmt(E.vals[i]) + ' gives <span class="eq">v ∝ ' + pair(u2[0],u2[1]) + '</span>');
+      }
+      s5 = 'Put each λ back into <span class="eq">(A − λI)v = 0</span> and solve for v. ' + parts.join('; ') + '.' + (E.kind === 'scalar' ? ' Here A − λI is the zero matrix, so any v works.' : '');
+    }
+    steps += '<li><div class="body"><b>Recover the eigenvectors.</b> ' + s5 + ' Turn the direction slider to these angles and watch v and Av line up.</div></li>';
+    $('steps').innerHTML = steps;
+    $('hint').textContent = E.kind === 'complex'
+      ? 'Sweep the direction: Av never lines up with v, so this matrix has no real eigenvectors.'
+      : 'Sweep the direction: v and Av line up only on the green dashed lines. The ratio of their lengths is the eigenvalue.';
+  }
+
+  function drawAll(){ drawPlane(); drawChart(); }
+  function updateMatrixLabels(){
+    $('oa').textContent = fmt(st.a); $('ob').textContent = fmt(st.b);
+    $('oc').textContent = fmt(st.c); $('od').textContent = fmt(st.d);
+    $('omo').textContent = Math.round(st.t*100) + '%';
+  }
+  function updateAll(){ updateMatrixLabels(); renderLive(); renderSolution(); drawAll(); }
+
+  /* ---------- events ---------- */
+  ['sa','sb','sc','sd'].forEach(function(id){
+    $(id).addEventListener('input', function(){
+      st.a = +$('sa').value; st.b = +$('sb').value; st.c = +$('sc').value; st.d = +$('sd').value;
+      updateAll();
+    });
+  });
+  $('sth').addEventListener('input', function(){
+    stopSweep(); st.th = (+$('sth').value)*Math.PI/180; renderLive(); drawAll();
+  });
+  $('smo').addEventListener('input', function(){
+    st.t = (+$('smo').value)/100; updateMatrixLabels(); drawPlane();
+  });
+
+  var dragging = false;
+  function fromPointer(e){
+    var cv = $('plane'), r = cv.getBoundingClientRect();
+    var x = e.clientX - r.left - r.width/2, y = -(e.clientY - r.top - r.height/2);
+    if (Math.hypot(x,y) < 3) return;
+    var th = Math.atan2(y,x); if (th < 0) th += TAU;
+    st.th = th; $('sth').value = Math.round(th*180/Math.PI)%360;
+    renderLive(); drawAll();
+  }
+  $('plane').addEventListener('pointerdown', function(e){ stopSweep(); dragging = true; try{ this.setPointerCapture(e.pointerId); }catch(err){} fromPointer(e); });
+  $('plane').addEventListener('pointermove', function(e){ if (dragging) fromPointer(e); });
+  $('plane').addEventListener('pointerup', function(){ dragging = false; });
+  $('plane').addEventListener('pointercancel', function(){ dragging = false; });
+
+  var last = 0;
+  function tick(ts){
+    if (!st.sweep) return;
+    var dt = Math.min(0.05,(ts-last)/1000); last = ts;
+    st.th = (st.th + dt*0.6) % TAU;
+    $('sth').value = Math.round(st.th*180/Math.PI)%360;
+    renderLive(); drawAll();
+    requestAnimationFrame(tick);
+  }
+  function stopSweep(){ st.sweep = false; $('sweep').setAttribute('aria-pressed','false'); $('sweep').textContent = 'Sweep direction'; }
+  $('sweep').addEventListener('click', function(){
+    if (st.sweep){ stopSweep(); return; }
+    st.sweep = true; this.setAttribute('aria-pressed','true'); this.textContent = 'Pause';
+    requestAnimationFrame(function(ts){ last = ts; tick(ts); });
+  });
+
+  var pbox = $('presets');
+  PRESETS.forEach(function(p){
+    var btn = document.createElement('button');
+    btn.type = 'button'; btn.textContent = p.n;
+    btn.addEventListener('click', function(){
+      $('sa').value = p.m[0]; $('sb').value = p.m[1]; $('sc').value = p.m[2]; $('sd').value = p.m[3];
+      st.a = +$('sa').value; st.b = +$('sb').value; st.c = +$('sc').value; st.d = +$('sd').value;
+      updateAll();
+    });
+    pbox.appendChild(btn);
+  });
+
+  if (window.ResizeObserver){
+    var ro = new ResizeObserver(function(){ drawAll(); });
+    ro.observe($('plane')); ro.observe($('chart'));
+  } else { window.addEventListener('resize', drawAll); }
+  if (window.matchMedia){
+    var mq = window.matchMedia('(prefers-color-scheme: dark)');
+    if (mq.addEventListener) mq.addEventListener('change', drawAll);
+  }
+  new MutationObserver(drawAll).observe(document.documentElement,{attributes:true,attributeFilter:['data-theme']});
+
+  updateAll();
+})();
+</script>
+
+</body></html>
